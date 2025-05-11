@@ -20,7 +20,7 @@ df = (
 srv = Server()
 srv.set_endpoint(ENDPOINT)
 
-uri = "http://example.com/WellTelemetry"
+uri = "https://data-science.uz/telemetry"
 idx = srv.register_namespace(uri)
 
 root = srv.get_objects_node()

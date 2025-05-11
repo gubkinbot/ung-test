@@ -1,7 +1,7 @@
 from opcua import Client
 
-ENDPOINT = "opc.tcp://localhost:4840"
-NAMESPACE_URI = "http://example.com/WellTelemetry"  
+ENDPOINT = "opc.tcp://0.0.0.0:4840"
+NAMESPACE_URI = "https://data-science.uz/telemetry"  
 # --- новый список колонок (кроме DATETIME) ---------------------
 CSV_TAGS = [
     "WELLID", "P1", "T1", "P3", "P4", "T4",
