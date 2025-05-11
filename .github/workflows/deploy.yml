@@ -1,0 +1,55 @@
+name: CI/CD Deploy
+
+# Триггерим при пуше в main
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Клонируем код
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Настраиваем SSH-агент
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # 3. Копируем файлы на сервер
+      - name: Deploy files via rsync
+        env:
+          SSH_USER: ${{ secrets.SSH_USERNAME }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          rsync -avz --delete -e "ssh -p ${SSH_PORT:-22}" \
+            OPC_UI.py data.csv main.py opc_client.py requirements.txt run_services.py \
+            $SSH_USER@$SSH_HOST:/var/www/www-root/python-opc-api/
+          
+      # 4. Запускаем проект на сервере
+      - name: Install deps & restart service on remote
+        env:
+          SSH_USER: ${{ secrets.SSH_USERNAME }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          ssh -p ${SSH_PORT:-22} $SSH_USER@$SSH_HOST << 'EOF'
+            cd /var/www/www-root/python-opc-api   # директория для кода :contentReference[oaicite:0]{index=0}
+
+            # Создаём или обновляем виртуальное окружение
+            python3 -m venv venv
+            source venv/bin/activate
+
+            # Устанавливаем зависимости
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            # Перезапускаем systemd-сервис opc_api (файл сервиса уже должен быть создан) :contentReference[oaicite:1]{index=1}
+            sudo systemctl daemon-reload
+            sudo systemctl restart opc_api
+          EOF
