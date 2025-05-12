@@ -27,9 +27,9 @@ jobs:
 
           # скрипт-askpass для автоматической подачи фразы
           cat > askpass.sh << 'EOP'
-#!/bin/sh
-echo "$SSH_PASSPHRASE"
-EOP
+          #!/bin/sh
+          echo "$SSH_PASSPHRASE"
+          EOP
           chmod +x askpass.sh
 
           # добавляем ключ в агент
