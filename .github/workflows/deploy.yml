@@ -13,27 +13,27 @@ jobs:
 
       # 1. Настраиваем SSH-агент и передаём passphrase
       - name: Setup SSH key with passphrase
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_PASSPHRASE:  ${{ secrets.SSH_PASSWORD }}
-          SSH_AUTH_SOCK:   /tmp/ssh_auth.sock
+        runs-on: ubuntu-latest
+        # Установка expect
         run: |
-          # запускаем агент
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -qq -y expect
 
-          # сохраняем ключ во временный файл
-          echo "$SSH_PRIVATE_KEY" > key.pem
+          # Запускаем агент и сохраняем его переменные окружения
+          eval "$(ssh-agent -s)"
+
+          # Сохраняем ключ в файл
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > key.pem
           chmod 600 key.pem
 
-          # скрипт-askpass для автоматической подачи фразы
-          cat > askpass.sh << 'EOP'
-          #!/bin/sh
-          echo "$SSH_PASSPHRASE"
-          EOP
-          chmod +x askpass.sh
-
-          # добавляем ключ в агент
-          DISPLAY=none SSH_ASKPASS=$PWD/askpass.sh ssh-add key.pem
+          # Добавляем ключ через expect, автоматически отвечая passphrase
+          expect << 'EOF'
+            spawn ssh-add key.pem
+            expect "Enter passphrase"
+            send "${SSH_PASSPHRASE}\r"
+            expect eof
+      EOF
+        env:
+          SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
 
       # 2. Копируем проект на сервер
       - name: Rsync to remote
