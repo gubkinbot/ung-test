@@ -1,6 +1,5 @@
 name: CI/CD Deploy
 
-# Триггерим при пуше в main
 on:
   push:
     branches: [ main ]
@@ -8,48 +7,63 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Клонируем код
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Настраиваем SSH-агент
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      # 1. Настраиваем SSH-агент и передаём passphrase
+      - name: Setup SSH key with passphrase
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PASSPHRASE:  ${{ secrets.SSH_PASSWORD }}
+          SSH_AUTH_SOCK:   /tmp/ssh_auth.sock
+        run: |
+          # запускаем агент
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
 
-      # 3. Копируем файлы на сервер
-      - name: Deploy files via rsync
+          # сохраняем ключ во временный файл
+          echo "$SSH_PRIVATE_KEY" > key.pem
+          chmod 600 key.pem
+
+          # скрипт-askpass для автоматической подачи фразы
+          cat > askpass.sh << 'EOP'
+#!/bin/sh
+echo "$SSH_PASSPHRASE"
+EOP
+          chmod +x askpass.sh
+
+          # добавляем ключ в агент
+          DISPLAY=none SSH_ASKPASS=$PWD/askpass.sh ssh-add key.pem
+
+      # 2. Копируем проект на сервер
+      - name: Rsync to remote
         env:
           SSH_USER: ${{ secrets.SSH_USERNAME }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           rsync -avz --delete -e "ssh -p ${SSH_PORT:-22}" \
-            OPC_UI.py data.csv main.py opc_client.py requirements.txt run_services.py \
-            $SSH_USER@$SSH_HOST:/var/www/www-root/python-opc-api/
-          
-      # 4. Запускаем проект на сервере
-      - name: Install deps & restart service on remote
+            ./* $SSH_USER@$SSH_HOST:/var/www/www-root/python-opc-api/
+
+      # 3. На сервере ставим зависимости и запускаем скрипт
+      - name: Install deps & run service
         env:
           SSH_USER: ${{ secrets.SSH_USERNAME }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           ssh -p ${SSH_PORT:-22} $SSH_USER@$SSH_HOST << 'EOF'
-            cd /var/www/www-root/python-opc-api   # директория для кода :contentReference[oaicite:0]{index=0}
+            set -e
+            cd /var/www/www-root/python-opc-api
 
-            # Создаём или обновляем виртуальное окружение
-            python3 -m venv venv
+            # создаём или активируем venv
+            python3 -m venv venv || true
             source venv/bin/activate
 
-            # Устанавливаем зависимости
+            # ставим зависимости
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            # Перезапускаем systemd-сервис opc_api (файл сервиса уже должен быть создан) :contentReference[oaicite:1]{index=1}
-            sudo systemctl daemon-reload
-            sudo systemctl restart opc_api
+            # запускаем скрипт в фоне
+            nohup python3 run_services.py > run_services.log 2>&1 &
           EOF
