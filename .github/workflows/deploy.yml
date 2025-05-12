@@ -28,11 +28,11 @@ jobs:
           expect << 'EOF'
             spawn ssh-add key.pem
             expect "Enter passphrase"
-            send "${SSH_PASSPHRASE}\r"
+            send "${SSH_PASSWORD}\r"
             expect eof
           EOF
         env:
-          SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
+          SSH_PASSPHRASE: ${{ secrets.SSH_PASSWORD }}
 
       # 2. Копируем проект на сервер
       - name: Rsync to remote
