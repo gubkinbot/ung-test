@@ -31,7 +31,7 @@ jobs:
             expect "Enter passphrase"
             send "${SSH_PASSPHRASE}\r"
             expect eof
-      EOF
+            EOF
         env:
           SSH_PASSPHRASE: ${{ secrets.SSH_PASSPHRASE }}
 
