@@ -1,0 +1,55 @@
+name: CI / CD (systemd)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps & run tests
+        run: |
+          pip install -r requirements.txt
+          pytest -q                 # (или skip, если пока нет тестов)
+
+  deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync code to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+        run: |
+          echo "$SSH_KEY" > key.pem
+          chmod 600 key.pem
+          rsync -az --delete -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
+                ./ $SSH_USER@$SSH_HOST:/var/www/$SSH_USER/python-opc-api/
+
+      - name: Install Python deps (remote venv)
+        env: {SSH_HOST: ${{ secrets.SSH_HOST }}, SSH_USER: ${{ secrets.SSH_USER }}, SSH_KEY: ${{ secrets.SSH_KEY }}}
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST "
+            cd /var/www/$SSH_USER/python-opc-api &&
+            source venv/bin/activate || (python3 -m venv venv && source venv/bin/activate) &&
+            pip install -r requirements.txt
+          "
+
+      - name: Restart opc_api.service
+        env: {SSH_HOST: ${{ secrets.SSH_HOST }}, SSH_USER: ${{ secrets.SSH_USER }}, SSH_KEY: ${{ secrets.SSH_KEY }}}
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST \
+              'sudo systemctl restart opc_api && sudo systemctl status -n 5 opc_api'
